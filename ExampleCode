@@ -1,0 +1,146 @@
+import numpy as np
+from mesa import Agent, Model
+from mesa.time import RandomActivation
+from mesa.space import MultiGrid # A grid that allows multiple agents to share a cell
+
+import matplotlib.pyplot as plt
+
+class Fish(Agent):
+    def __init__(self, unique_id, model):
+        super().__init__(unique_id, model)
+        self.size = self.random.gauss(AVG_PACK_SIZE, AVG_PACK_SIZE / 10)   #gaussian probability of avg pack size       
+        self.dead = False
+        
+    def migrate(self):
+        possible_steps= self.model.grid.get_neighborhood(
+            self.pos,
+            moore=True,
+            include_center=True)
+      
+        
+        new_position = self.random.choice(possible_steps) #change to lower temperature
+        self.model.grid.move_agent(self, new_position)
+        
+    def step(self):
+        if self.dead:
+            return
+
+        #grow depending on growth rate
+        x, y = self.pos
+        birth_rate = BIRTH_RATE*(1-BIRTH_PROB_WRT_TEMP * self.model.temperature[x][y])
+        death_rate = DEATH_RATE*(1+DEATH_PROB_WRT_TEMP *self.model.temperature[x][y])
+        self.size += birth_rate - death_rate
+        
+        #migrate randomly, could stay in same place
+        migrate(self)
+        
+        #die if too low
+        if self.size <= MIN_PACK_SIZE:
+            self.dead = True
+            
+        
+class FishEcoModel(Model):
+    def __init__(self, N, width, height):
+        self.N = N
+        self.grid = MultiGrid(width, height, False)
+        self.schedule = RandomActivation(self)
+        
+        self.temperature = [ [ AVG_TEMP - TEMP_INC_WITH_HEIGHT*k
+                for k in range(height)] for _ in range(width)]
+        
+        
+        
+        for i in range(self.N):
+            d = Fish(i, self)
+            self.schedule.add(d)
+            
+            x = self.random.randrange(self.grid.width)
+            y = self.random.randrange(self.grid.height)
+            
+            self.grid.place_agent(d, (x, y))
+            
+    def step(self):
+        self.schedule.step()
+        for x in range(self.grid.width):
+            for y in range(self.grid.height):
+                self.temperature[x][y] += TEMP_GROWTH
+        
+             
+                
+DEATH_RATE = 3
+DEATH_PROB_WRT_TEMP = .02
+BIRTH_RATE = 3.1
+BIRTH_RATE_WRT_TEMP = .01         
+AVG_PACK_SIZE = 100 
+MIN_PACK_SIZE = 40
+DEATH_RATE_WRT_TEMP = .1
+AVG_TEMP = 17
+TEMP_INC_WITH_HEIGHT = .001
+TEMP_INC_WITH_WIDTH = .0001           
+
+INIT_TEMPERATURE = 17 #in celcius
+
+
+TEMP_GROWTH = 0.05/365
+
+
+
+
+KM_FISH_SWIM_IN_ONE_DAY = 40
+N_FISH = 200
+WIDTH = 60
+HEIGHT = 140
+NUM_OF_YEARS = 50
+TOTAL_TIME = 365 * NUM_OF_YEARS
+
+
+model = FishEcoModel(N_FISH, HEIGHT, WIDTH)
+data = np.matrix[3 : N_FISH]
+avg_fish_sizes = 100
+alive_fishes = []
+
+for i in range(TOTAL_TIME):
+    if i % (365*10) == 0:
+        print("Step " + str(i))
+        
+        print("Temperature Distribution")
+        plt.imshow(model.temperature, interpolation="nearest")
+        plt.colorbar()
+        plt.show()
+        
+        print("Fish Distributions")
+        for d in model.schedule:
+            x,y = d.pos
+            data[d][1]=x
+            data[d][2]=y
+            data[d][3]= d.size
+        plt.imshow(data,interpolation="nearest")
+        plt.colorbar()
+        plt.show()
+        
+    
+    model.step()
+    
+    fish_sizes = [d.size for d in model.schedule.agents if not d.dead]
+    fish_energies = [d.energy for d in model.schedule.agents if not d.dead]
+    if len(fish_sizes) > 0:
+        avg_fish_sizes.append(sum(fish_sizes) / len(fish_sizes))
+    else:
+        avg_fish_sizes.append(0)
+        
+    if len(fish_energies) > 0:
+        avg_fish_energies.append(sum(fish_energies) / len(fish_energies))
+    else:
+        avg_fish_energies.append(0)
+        
+    alive_fishes.append(sum([1 for d in model.schedule.agents if not d.dead]))
+    
+plt.plot(avg_fish_energies)
+plt.title("Average Fish Energies")
+plt.show()
+plt.plot(avg_fish_sizes)
+plt.title("Average Fish Weights")
+plt.show()
+plt.title("Number of Packs of Fish")
+plt.plot(alive_fishes)
+plt.show()

@@ -1,3 +1,4 @@
+
 import numpy as np
 from mesa import Agent, Model
 from mesa.time import RandomActivation
@@ -27,15 +28,30 @@ class Fish(Agent):
 
         #grow depending on growth rate
         x, y = self.pos
-        birth_rate = BIRTH_RATE*(1-BIRTH_PROB_WRT_TEMP * self.model.temperature[x][y])
-        death_rate = DEATH_RATE*(1+DEATH_PROB_WRT_TEMP *self.model.temperature[x][y])
+        if (x > TERRITORIAL_WATERS_RANGE):
+            fishing_rate = FISHING_RATE
+            birth_rate = BIRTH_RATE*(1-BIRTH_PROB_WRT_TEMP * self.model.temperature[x][y])
+            
+        else:
+            fishing_rate = 0
+            birth_rate = 0
+            
+        death_rate = DEATH_RATE*(1+DEATH_PROB_WRT_TEMP *self.model.temperature[x][y]+fishing_rate)
         self.size += birth_rate - death_rate
         
         #migrate randomly, could stay in same place
-        migrate(self)
+        self.migrate()
+        
+        
+#        if self.size > CREATE_NEW_PACK:
+##            model.N += model.N + 1
+##            d = Fish(model.N,model)
+##            model.grid.place_agent(d, (x,y))
+##            model.schedule.add(d)
+#            self.size = self.size - d.size
         
         #die if too low
-        if self.size <= MIN_PACK_SIZE:
+        if self.size < MIN_PACK_SIZE:
             self.dead = True
             
         
@@ -47,9 +63,7 @@ class FishEcoModel(Model):
         
         self.temperature = [ [ AVG_TEMP - TEMP_INC_WITH_HEIGHT*k
                 for k in range(height)] for _ in range(width)]
-        
-        
-        
+    
         for i in range(self.N):
             d = Fish(i, self)
             self.schedule.add(d)
@@ -63,22 +77,25 @@ class FishEcoModel(Model):
         self.schedule.step()
         for x in range(self.grid.width):
             for y in range(self.grid.height):
-                self.temperature[x][y] += TEMP_GROWTH
+                self.temperature[x][y] += TEMP_GROWTH * self.temperature[x][y]
         
              
-                
-DEATH_RATE = 3
-DEATH_PROB_WRT_TEMP = .02
-BIRTH_RATE = 3.1
-BIRTH_RATE_WRT_TEMP = .01         
-AVG_PACK_SIZE = 100 
-MIN_PACK_SIZE = 40
-DEATH_RATE_WRT_TEMP = .1
-AVG_TEMP = 17
-TEMP_INC_WITH_HEIGHT = .001
+AVG_TEMP = 8    #in celsius           
+DEATH_RATE = 2  
+DEATH_PROB_WRT_TEMP = .25 / AVG_TEMP
+BIRTH_RATE = 25
+BIRTH_PROB_WRT_TEMP = .15 / AVG_TEMP        
+AVG_PACK_SIZE = 60 
+MIN_PACK_SIZE = 30
+TERRITORIAL_WATERS_RANGE = 30
+FISHING_RATE = 20
+CREATE_NEW_PACK = 100
+
+TEMP_STANDARD_DEVIATION = .1
+TEMP_INC_WITH_HEIGHT = .0025
 TEMP_INC_WITH_WIDTH = .0001           
 
-INIT_TEMPERATURE = 17 #in celcius
+
 
 
 TEMP_GROWTH = 0.05/365
@@ -87,20 +104,31 @@ TEMP_GROWTH = 0.05/365
 
 
 KM_FISH_SWIM_IN_ONE_DAY = 40
-N_FISH = 200
+N_FISH = 2000
 WIDTH = 60
 HEIGHT = 140
-NUM_OF_YEARS = 50
+NUM_OF_YEARS = 3
 TOTAL_TIME = 365 * NUM_OF_YEARS
 
 
-model = FishEcoModel(N_FISH, HEIGHT, WIDTH)
-data = np.matrix[3 : N_FISH]
+model = FishEcoModel(N_FISH, WIDTH, HEIGHT)
+
 avg_fish_sizes = 100
 alive_fishes = []
 
+data=[]
+i=0;
+
+while i<WIDTH:
+    data.append(np.arange(HEIGHT))
+    i=i+1
+for h in range(HEIGHT):
+    for w in range(WIDTH):
+        data[w][h] = 0
+
 for i in range(TOTAL_TIME):
-    if i % (365*10) == 0:
+    print(i)
+    if i % (50) == 0:
         print("Step " + str(i))
         
         print("Temperature Distribution")
@@ -109,38 +137,38 @@ for i in range(TOTAL_TIME):
         plt.show()
         
         print("Fish Distributions")
-        for d in model.schedule:
-            x,y = d.pos
-            data[d][1]=x
-            data[d][2]=y
-            data[d][3]= d.size
+        
+        
+        data=np.array(data)
+        for d in model.schedule.agents:
+            if not d.dead:
+                x, y = d.pos
+                data[x][y] = data[x][y] + d.size
+            
         plt.imshow(data,interpolation="nearest")
         plt.colorbar()
         plt.show()
-        
+        for h in range(HEIGHT):
+            for w in range(WIDTH):
+                data[w][h] = 0
     
     model.step()
     
-    fish_sizes = [d.size for d in model.schedule.agents if not d.dead]
-    fish_energies = [d.energy for d in model.schedule.agents if not d.dead]
-    if len(fish_sizes) > 0:
-        avg_fish_sizes.append(sum(fish_sizes) / len(fish_sizes))
-    else:
-        avg_fish_sizes.append(0)
-        
-    if len(fish_energies) > 0:
-        avg_fish_energies.append(sum(fish_energies) / len(fish_energies))
-    else:
-        avg_fish_energies.append(0)
-        
-    alive_fishes.append(sum([1 for d in model.schedule.agents if not d.dead]))
-    
-plt.plot(avg_fish_energies)
-plt.title("Average Fish Energies")
-plt.show()
-plt.plot(avg_fish_sizes)
-plt.title("Average Fish Weights")
-plt.show()
-plt.title("Number of Packs of Fish")
-plt.plot(alive_fishes)
-plt.show()
+#    fish_sizes = [d.size for d in model.schedule.agents if not d.dead]
+#   
+#    if len(fish_sizes) > 0:
+#        avg_fish_sizes.append(sum(fish_sizes) / len(fish_sizes))
+#    else:
+#        avg_fish_sizes.append(0)
+#        
+#   
+#        
+#    alive_fishes.append(sum([1 for d in model.schedule.agents if not d.dead]))
+#    
+#
+#plt.plot(avg_fish_sizes)
+#plt.title("Average Fish Sizes")
+#plt.show()
+#plt.title("Number of Packs of Fish")
+#plt.plot(alive_fishes)
+#plt.show()
